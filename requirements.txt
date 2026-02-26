@@ -1,7 +1,7 @@
-streamlit==1.32.2
-openai==1.30.1
-python-dotenv==1.0.1
-PyPDF2==3.0.1
-python-docx==1.1.0
-pandas==2.2.2
-fpdf==1.7.2
+streamlit>=1.26
+openai>=1.30.0
+python-dotenv
+PyPDF2
+python-docx
+pandas
+fpdf

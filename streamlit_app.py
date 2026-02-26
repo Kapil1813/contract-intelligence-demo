@@ -4,40 +4,43 @@ import pandas as pd
 import json
 import re
 import time
-from fpdf import FPDF
 from PyPDF2 import PdfReader
 from docx import Document
+from fpdf import FPDF
 from openai import OpenAI
 
 # -----------------------------
-# 🔐 Password Protection
+# 🔐 App Config & Secrets
 # -----------------------------
-PASSWORD = st.secrets.get("app_password", "Lucky1813")  # optional secret
+st.set_page_config(page_title="GenAI Rights Dashboard", layout="wide")
+
+# Password protection
+APP_PASSWORD = st.secrets.get("app_password", "demo123")
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    pwd_input = st.text_input("Enter Password to Access the Dashboard", type="password")
+    password_input = st.text_input("Enter app password:", type="password")
     if st.button("Login"):
-        if pwd_input == PASSWORD:
+        if password_input == APP_PASSWORD:
             st.session_state.authenticated = True
-            st.success("✅ Access Granted")
+            st.success("✅ Access granted")
         else:
-            st.error("❌ Wrong password")
+            st.error("❌ Incorrect password")
     st.stop()
 
-# -----------------------------
-# 🔑 OpenAI Client
-# -----------------------------
-OPENAI_API_KEY = st.secrets["openai"]["api_key"]
-client = OpenAI(api_key=OPENAI_API_KEY)
+# OpenAI client setup
+try:
+    OPENAI_API_KEY = st.secrets["openai"]["api_key"]
+    if not OPENAI_API_KEY:
+        st.error("❌ OpenAI API key is missing! Add it in Streamlit Secrets.")
+        st.stop()
+    client = OpenAI(api_key=OPENAI_API_KEY)
+except Exception as e:
+    st.error(f"Failed to initialize OpenAI client: {e}")
+    st.stop()
 
-# -----------------------------
-# Streamlit Page Config
-# -----------------------------
-st.set_page_config(page_title="GenAI Rights Conflict Dashboard", layout="wide")
-st.title("📺 GenAI Rights & Conflict Intelligence Dashboard")
 MAX_CHARS = 8000
 
 # -----------------------------
@@ -47,32 +50,19 @@ sample_contracts = [
     {
         "filename": "EU_TVOD_Exclusive.pdf",
         "type": "pdf",
-        "text": """Distributor grants Apple exclusive TVOD rights in the European Union
-from January 1, 2024 through December 31, 2026.
-
-A 6-month SVOD holdback applies following the end of the TVOD window.
-
-Music synchronization rights are excluded and require separate clearance.
-
-Apple may extend the TVOD window by 12 months upon written notice 90 days prior to expiration."""
+        "text": """Distributor grants Apple exclusive TVOD rights in the EU...
+Music synchronization rights are excluded."""
     },
     {
         "filename": "US_SVOD_Holdback.docx",
         "type": "docx",
-        "text": """Distributor grants Apple non-exclusive SVOD rights in the United States
-from February 1, 2024 through January 31, 2025.
-
-EST window of 3 months applies before SVOD.
-
-No music rights are included.
-
-Apple may extend SVOD by 6 months upon mutual agreement."""
+        "text": """Distributor grants Apple non-exclusive SVOD rights in the US...
+No music rights included."""
     },
     {
         "filename": "Movie_A_Rights.docx",
         "type": "docx",
         "text": """Contract Title: Movie A Distribution Agreement
-
 Rights Type: Streaming
 Territory: United States
 Exclusivity: Exclusive
@@ -81,35 +71,20 @@ License End Date: 2026-12-31
 Holdbacks: None
 Music Clearance: Cleared
 Options: Renewal for 1 year"""
-    },
-    {
-        "filename": "Movie_B_Rights.docx",
-        "type": "docx",
-        "text": """Contract Title: Movie B Distribution Agreement
-
-Rights Type: Streaming
-Territory: United States
-Exclusivity: Exclusive
-License Start Date: 2026-06-01
-License End Date: 2027-05-31
-Holdbacks: None
-Music Clearance: Cleared
-Options: None"""
     }
 ]
 
 # -----------------------------
 # 1️⃣ Contract Selection
 # -----------------------------
+st.title("📺 GenAI Rights & Conflict Dashboard")
 st.header("1️⃣ Upload or Select Contracts")
+
 input_mode = st.radio("Choose input method:", ["Upload Contracts", "Use Sample Contracts"])
 contracts_data = []
 
 if input_mode == "Upload Contracts":
-    uploaded_files = st.file_uploader(
-        "Upload PDF or DOCX contracts",
-        type=["pdf","docx"], accept_multiple_files=True
-    )
+    uploaded_files = st.file_uploader("Upload PDF or DOCX contracts", type=["pdf","docx"], accept_multiple_files=True)
     if uploaded_files:
         for uploaded_file in uploaded_files:
             contract_text = ""
@@ -140,11 +115,12 @@ if not contracts_data:
 # -----------------------------
 st.header("2️⃣ Structured Rights Extraction")
 rights_dfs = []
+
 progress = st.progress(0)
 total = len(contracts_data)
 
 for i, contract in enumerate(contracts_data):
-    st.info(f"Extracting rights from {contract['filename']}… This may take a few seconds per contract.")
+    st.info(f"Extracting rights from {contract['filename']}…")
     prompt = f"""
 Extract rights attributes from this contract.
 
@@ -169,14 +145,15 @@ Contract:
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            response_format={"type":"json_object"},
             messages=[{"role":"system","content":"Return valid JSON only."},
-                      {"role":"user","content":prompt}]
+                      {"role":"user","content":prompt}],
+            response_format={"type":"json_object"}
         )
         raw_output = response.choices[0].message.content
+        st.code(raw_output, language="json")
         try:
             parsed = json.loads(raw_output)
-        except json.JSONDecodeError:
+        except:
             match = re.search(r"\{.*\}", raw_output, re.DOTALL)
             parsed = json.loads(match.group()) if match else {}
         required_keys = ["Rights Type","Territory","Exclusivity",
@@ -230,7 +207,7 @@ col3.metric("Contracts with Holdbacks", combined_df["Holdbacks"].astype(str).str
 col4.metric("Detected Conflicts", len(conflicts))
 
 # -----------------------------
-# Combined Rights Table with Legend
+# Combined Rights Table
 # -----------------------------
 def highlight(row):
     holdback_flag = str(row["Holdbacks"]).strip().lower() not in ["none",""]
@@ -238,84 +215,52 @@ def highlight(row):
     colors = []
     for col in row.index:
         if conflict_flag:
-            colors.append("background-color: #f28b82; color: black")  # Red for conflict
+            colors.append("background-color: #f28b82; color: black")
         elif holdback_flag:
-            colors.append("background-color: #fff475; color: black")  # Yellow for holdback
+            colors.append("background-color: #fff475; color: black")
         else:
-            colors.append("background-color: #ccff90; color: black")  # Green for all clear
+            colors.append("background-color: #ccff90; color: black")
     return colors
 
-st.subheader("Combined Rights Table (Legend: Green = All clear, Red = Conflict, Yellow = Holdbacks)")
-styled_df = combined_df.style.apply(highlight, axis=1)
-st.dataframe(styled_df, width="stretch")
+st.subheader("Combined Rights Table")
+st.dataframe(combined_df.style.apply(highlight, axis=1), width="stretch")
 
 # -----------------------------
-# Export CSV
+# Export CSV & PDF
 # -----------------------------
-csv_data = combined_df.to_csv(index=False).encode('utf-8')
+csv_data = combined_df.to_csv(index=False).encode("utf-8")
 st.download_button("📥 Download CSV", csv_data, "combined_rights.csv", "text/csv")
 
-# -----------------------------
-# Export PDF
-# -----------------------------
 pdf = FPDF(orientation="L", unit="mm", format="A4")
 pdf.set_auto_page_break(auto=True, margin=10)
 pdf.add_page()
-
 pdf.set_font("Arial", style="B", size=12)
-pdf.cell(0, 10, "GenAI Rights Conflict Dashboard - Combined Rights Report", ln=True)
+pdf.cell(0, 10, "GenAI Rights Conflict Dashboard", ln=True)
 pdf.ln(5)
-
 pdf.set_font("Arial", size=8)
 
-table_columns = combined_df.columns.tolist()
+cols = combined_df.columns.tolist()
 page_width = pdf.w - 20
-col_width = page_width / len(table_columns)
-col_widths = [col_width] * len(table_columns)
+col_width = page_width / len(cols)
 
-# Header Row
+# Header
 pdf.set_font("Arial", style="B", size=8)
-for i, col_name in enumerate(table_columns):
-    pdf.cell(col_widths[i], 8, str(col_name), border=1)
+for c in cols:
+    pdf.cell(col_width, 8, str(c), border=1)
 pdf.ln()
 
 pdf.set_font("Arial", size=8)
-
-# Function to calculate row height
-def get_row_height(row):
-    max_lines = 1
-    for i, col_name in enumerate(table_columns):
-        text = str(row[col_name])
-        lines = pdf.multi_cell(col_widths[i], 5, text, border=0, split_only=True)
-        max_lines = max(max_lines, len(lines))
-    return max_lines * 5
-
-# Data Rows
 for _, row in combined_df.iterrows():
-    row_height = get_row_height(row)
-    x_start = pdf.get_x()
-    y_start = pdf.get_y()
-    for i, col_name in enumerate(table_columns):
-        text = str(row[col_name])
-        x_current = pdf.get_x()
-        y_current = pdf.get_y()
-        pdf.multi_cell(col_widths[i], 5, text, border=1)
-        pdf.set_xy(x_current + col_widths[i], y_current)
-    pdf.ln(row_height)
-
+    for c in cols:
+        pdf.multi_cell(col_width, 5, str(row[c]), border=1)
+    pdf.ln()
 pdf_bytes = pdf.output(dest="S").encode("latin1")
-st.download_button(
-    "📥 Download PDF Report",
-    pdf_bytes,
-    "combined_rights_report.pdf",
-    "application/pdf"
-)
+st.download_button("📥 Download PDF", pdf_bytes, "combined_rights.pdf", "application/pdf")
 
 # -----------------------------
-# 4️⃣ Auto-Generated User Stories
+# 4️⃣ Auto-generated User Stories
 # -----------------------------
 st.header("4️⃣ Backlog User Stories")
-progress_story = st.progress(0)
 for i, contract in enumerate(contracts_data):
     st.info(f"Generating user story for {contract['filename']}…")
     story_prompt = f"""
@@ -326,19 +271,19 @@ Include ONLY:
 - Acceptance Criteria
 - Test Notes
 
-DO NOT add any extra explanation.
-
 Contract:
 {contract['text']}
 """
-    story_response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role":"user","content":story_prompt}]
-    )
-    story = story_response.choices[0].message.content
-    st.subheader(contract["filename"])
-    st.text_area(f"User Story - {contract['filename']}", story, height=200)
-    progress_story.progress((i+1)/len(contracts_data))
+    try:
+        story_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role":"user","content":story_prompt}]
+        )
+        story = story_response.choices[0].message.content
+        st.subheader(contract["filename"])
+        st.text_area(f"User Story - {contract['filename']}", story, height=200)
+    except Exception as e:
+        st.error(f"Failed to generate story for {contract['filename']}: {e}")
     time.sleep(0.5)
 
-st.success("🎉 Dashboard ready! CSV and PDF exports available above.")
+st.success("🎉 Dashboard ready! CSV & PDF exports available.")
