@@ -1,0 +1,226 @@
+import streamlit as st
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
+from PyPDF2 import PdfReader
+from docx import Document
+import pandas as pd
+import json
+import re
+from fpdf import FPDF
+import time
+
+# -----------------------------
+# 🔐 Load environment variables
+# -----------------------------
+load_dotenv()
+API_KEY = os.getenv("OPENAI_API_KEY")
+if not API_KEY:
+    st.error("❌ OPENAI_API_KEY not found. Add it to .env or Streamlit secrets.")
+    st.stop()
+client = OpenAI(api_key=API_KEY)
+
+# -----------------------------
+# 🔐 Password Protection
+# -----------------------------
+PASSWORD = "Demo123!"  # Change before public deployment
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    pwd = st.text_input("Enter password to access demo:", type="password")
+    if st.button("Login"):
+        if pwd == PASSWORD:
+            st.session_state.logged_in = True
+            st.success("✅ Password correct!")
+        else:
+            st.error("❌ Incorrect password")
+    st.stop()
+
+# -----------------------------
+# Streamlit Page Setup
+# -----------------------------
+st.set_page_config(page_title="GenAI Rights Conflict Dashboard", layout="wide")
+st.title("📺 GenAI Rights & Conflict Intelligence Dashboard")
+MAX_CHARS = 8000
+
+# -----------------------------
+# Sample Contracts
+# -----------------------------
+sample_contracts = [
+    {
+        "filename": "EU_TVOD_Exclusive.pdf",
+        "type": "pdf",
+        "text": """Distributor grants Apple exclusive TVOD rights in the European Union
+from January 1, 2024 through December 31, 2026.
+A 6-month SVOD holdback applies following the end of the TVOD window.
+Music synchronization rights are excluded and require separate clearance.
+Apple may extend the TVOD window by 12 months upon written notice 90 days prior to expiration."""
+    },
+    {
+        "filename": "US_SVOD_Holdback.docx",
+        "type": "docx",
+        "text": """Distributor grants Apple non-exclusive SVOD rights in the United States
+from February 1, 2024 through January 31, 2025.
+EST window of 3 months applies before SVOD.
+No music rights are included.
+Apple may extend SVOD by 6 months upon mutual agreement."""
+    }
+]
+
+# -----------------------------
+# 1️⃣ Upload or Select Contracts
+# -----------------------------
+st.header("1️⃣ Upload or Select Contracts")
+input_mode = st.radio("Choose input method:", ["Upload Contracts", "Use Sample Contracts"])
+contracts_data = []
+
+if input_mode == "Upload Contracts":
+    uploaded_files = st.file_uploader("Upload PDF or DOCX contracts", type=["pdf","docx"], accept_multiple_files=True)
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            contract_text = ""
+            if uploaded_file.type == "application/pdf":
+                pdf = PdfReader(uploaded_file)
+                for page in pdf.pages:
+                    contract_text += (page.extract_text() or "") + "\n"
+            elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                doc = Document(uploaded_file)
+                for para in doc.paragraphs:
+                    contract_text += para.text + "\n"
+            contract_text = contract_text[:MAX_CHARS]
+            contracts_data.append({"filename": uploaded_file.name, "text": contract_text})
+else:
+    all_files = [c["filename"] for c in sample_contracts]
+    selected_files = st.multiselect("Select sample contracts", options=all_files, default=all_files)
+    for fname in selected_files:
+        contract = next(c for c in sample_contracts if c["filename"] == fname)
+        contracts_data.append({"filename": contract["filename"], "text": contract["text"]})
+
+if not contracts_data:
+    st.info("Upload or select contracts to begin analysis.")
+    st.stop()
+
+# -----------------------------
+# 2️⃣ Structured Rights Extraction
+# -----------------------------
+st.header("2️⃣ Structured Rights Extraction")
+rights_dfs = []
+progress = st.progress(0)
+total = len(contracts_data)
+
+for i, contract in enumerate(contracts_data):
+    st.info(f"Extracting rights from {contract['filename']}…")
+    prompt = f"""
+Extract rights attributes from this contract. Return SINGLE JSON object with keys:
+{{
+  "Rights Type": "",
+  "Territory": "",
+  "Exclusivity": "",
+  "License Start Date": "",
+  "License End Date": "",
+  "Holdbacks": "",
+  "Music Clearance": "",
+  "Options": ""
+}}
+Contract:
+{contract['text']}
+"""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type":"json_object"},
+            messages=[{"role":"system","content":"Return valid JSON only."},
+                      {"role":"user","content":prompt}]
+        )
+        raw_output = response.choices[0].message.content
+        try:
+            parsed = json.loads(raw_output)
+        except:
+            match = re.search(r"\{.*\}", raw_output, re.DOTALL)
+            parsed = json.loads(match.group()) if match else {}
+        # Ensure all keys exist
+        keys = ["Rights Type","Territory","Exclusivity","License Start Date","License End Date","Holdbacks","Music Clearance","Options"]
+        for k in keys:
+            parsed.setdefault(k, None)
+        df = pd.DataFrame([parsed])
+        df["Contract"] = contract["filename"]
+        rights_dfs.append(df)
+    except Exception as e:
+        st.error(f"Failed: {contract['filename']}: {str(e)}")
+    progress.progress((i+1)/total)
+    time.sleep(0.5)
+
+if not rights_dfs:
+    st.warning("⚠️ No structured rights extracted.")
+    st.stop()
+
+combined_df = pd.concat(rights_dfs, ignore_index=True)
+combined_df["License Start Date"] = pd.to_datetime(combined_df["License Start Date"], errors="coerce")
+combined_df["License End Date"] = pd.to_datetime(combined_df["License End Date"], errors="coerce")
+
+# -----------------------------
+# 3️⃣ Conflict Detection
+# -----------------------------
+st.header("3️⃣ Conflict & Holdback Intelligence")
+conflicts = []
+for i in range(len(combined_df)):
+    for j in range(i+1, len(combined_df)):
+        r1 = combined_df.iloc[i]
+        r2 = combined_df.iloc[j]
+        territory_conflict = str(r1["Territory"]).lower() == str(r2["Territory"]).lower()
+        date_conflict = pd.notna(r1["License Start Date"]) and pd.notna(r2["License Start Date"]) and \
+                        r1["License Start Date"] <= r2["License End Date"] and \
+                        r2["License Start Date"] <= r1["License End Date"]
+        exclusive_conflict = str(r1["Exclusivity"]).lower()=="exclusive" or str(r2["Exclusivity"]).lower()=="exclusive"
+        if territory_conflict and date_conflict and exclusive_conflict:
+            conflicts.append(f"{r1['Contract']} ↔ {r2['Contract']} (Exclusive overlap in {r1['Territory']})")
+
+# -----------------------------
+# 4️⃣ Dashboard Summary
+# -----------------------------
+st.subheader("📊 Summary")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total Contracts", len(combined_df))
+col2.metric("Exclusive Deals", combined_df["Exclusivity"].astype(str).str.lower().eq("exclusive").sum())
+col3.metric("Contracts with Holdbacks", combined_df["Holdbacks"].astype(str).str.lower().ne("none").sum())
+col4.metric("Detected Conflicts", len(conflicts))
+
+# -----------------------------
+# Combined Rights Table
+# -----------------------------
+def highlight(row):
+    holdback_flag = str(row["Holdbacks"]).strip().lower() not in ["none",""]
+    conflict_flag = any(row["Contract"] in c for c in conflicts)
+    colors = []
+    for col in row.index:
+        if conflict_flag:
+            colors.append("background-color: #f28b82; color: black")  # Red
+        elif holdback_flag:
+            colors.append("background-color: #fff475; color: black")  # Yellow
+        else:
+            colors.append("background-color: #ccff90; color: black")  # Green
+    return colors
+
+st.subheader("Combined Rights Table")
+st.dataframe(combined_df.style.apply(highlight, axis=1), width="stretch")
+
+# -----------------------------
+# Export CSV
+# -----------------------------
+csv_data = combined_df.to_csv(index=False).encode("utf-8")
+st.download_button("📥 Download CSV", csv_data, "combined_rights.csv", "text/csv")
+
+# -----------------------------
+# Export PDF
+# -----------------------------
+pdf = FPDF(orientation="L", unit="mm", format="A4")
+pdf.add_page()
+pdf.set_font("Arial", "B", 12)
+pdf.cell(0, 10, "GenAI Rights Conflict Dashboard", ln=True)
+pdf.set_font("Arial", size=8)
+for _, row in combined_df.iterrows():
+    row_text = " | ".join(str(v) for v in row.values)
+    pdf.multi_cell(0, 5, row_text)
+pdf_bytes = pdf.output(dest="S").encode("latin1")
+st.download_button("📥 Download PDF", pdf_bytes, "combined_rights_report.pdf", "application/pdf")
