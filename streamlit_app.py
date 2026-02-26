@@ -231,7 +231,7 @@ st.dataframe(combined_df.style.apply(highlight, axis=1), width="stretch")
 csv_data = combined_df.to_csv(index=False).encode("utf-8")
 st.download_button("📥 Download CSV", csv_data, "combined_rights.csv", "text/csv")
 # -----------------------------
-# Export PDF (Fully Wrapped & Aligned)
+# Export PDF (Wrapped & Aligned)
 # -----------------------------
 from fpdf import FPDF
 
@@ -251,7 +251,7 @@ def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard
     
     # Header
     for c in cols:
-        pdf.multi_cell(col_width, 6, str(c), border=1, align="C", ln=3)
+        pdf.multi_cell(col_width, 6, str(c), border=1, align="C")  # removed ln
     pdf.ln()
     
     pdf.set_font("Arial", "", 8)
@@ -261,11 +261,10 @@ def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard
         x_start = pdf.get_x()
         y_start = pdf.get_y()
         
-        # Calculate max height of row based on wrapped cells
+        # Calculate max height of row
         cell_heights = []
         for c in cols:
             text = str(row[c])
-            # number of lines = ceil(text width / col width)
             lines = pdf.multi_cell(col_width, 5, text, border=0, split_only=True)
             cell_heights.append(len(lines) * 5)
         row_height = max(cell_heights)
@@ -274,20 +273,10 @@ def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard
         for c in cols:
             text = str(row[c])
             pdf.multi_cell(col_width, 5, text, border=1)
-            x_new = pdf.get_x()
-            y_new = pdf.get_y()
             pdf.set_xy(x_start + cols.index(c)*col_width, y_start)
         pdf.ln(row_height)
     
     return pdf.output(dest="S").encode("latin1")
-
-pdf_bytes = generate_pdf(combined_df)
-st.download_button(
-    "📥 Download PDF",
-    pdf_bytes,
-    "combined_rights_report.pdf",
-    "application/pdf"
-)
 # -----------------------------
 # 4️⃣ Auto-generated User Stories
 # -----------------------------
