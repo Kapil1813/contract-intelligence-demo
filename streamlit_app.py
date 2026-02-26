@@ -230,36 +230,45 @@ st.dataframe(combined_df.style.apply(highlight, axis=1), width="stretch")
 # -----------------------------
 csv_data = combined_df.to_csv(index=False).encode("utf-8")
 st.download_button("📥 Download CSV", csv_data, "combined_rights.csv", "text/csv")
-# -----------------------------
-# Export PDF (Wrapped & Aligned)
-# -----------------------------
 from fpdf import FPDF
 
-def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard"):
+def generate_pdf(df: pd.DataFrame, conflicts: list = [], title: str = "GenAI Rights Conflict Dashboard"):
     pdf = FPDF(orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=10)
     pdf.add_page()
     
+    # Title
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, title, ln=True)
     pdf.ln(5)
     
-    pdf.set_font("Arial", "B", 8)
+    # Columns
     cols = df.columns.tolist()
     page_width = pdf.w - 20  # left/right margins
     col_width = page_width / len(cols)
     
     # Header
+    pdf.set_font("Arial", "B", 8)
     for c in cols:
-        pdf.multi_cell(col_width, 6, str(c), border=1, align="C")  # removed ln
+        pdf.multi_cell(col_width, 6, str(c), border=1, align="C")
     pdf.ln()
     
-    pdf.set_font("Arial", "", 8)
-    
     # Data rows
+    pdf.set_font("Arial", "", 8)
     for _, row in df.iterrows():
         x_start = pdf.get_x()
         y_start = pdf.get_y()
+        
+        # Determine row highlight
+        conflict_flag = any(row["Contract"] in c for c in conflicts)
+        holdback_flag = str(row["Holdbacks"]).strip().lower() not in ["none",""]
+        
+        if conflict_flag:
+            pdf.set_fill_color(242, 139, 130)  # red
+        elif holdback_flag:
+            pdf.set_fill_color(255, 244, 117)  # yellow
+        else:
+            pdf.set_fill_color(204, 255, 144)  # green
         
         # Calculate max height of row
         cell_heights = []
@@ -269,17 +278,17 @@ def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard
             cell_heights.append(len(lines) * 5)
         row_height = max(cell_heights)
         
-        # Draw each cell with same height
-        for c in cols:
+        # Draw each cell with fill
+        for i, c in enumerate(cols):
+            pdf.set_xy(x_start + i*col_width, y_start)
             text = str(row[c])
-            pdf.multi_cell(col_width, 5, text, border=1)
-            pdf.set_xy(x_start + cols.index(c)*col_width, y_start)
+            pdf.multi_cell(col_width, 5, text, border=1, fill=True)
         pdf.ln(row_height)
     
     return pdf.output(dest="S").encode("latin1")
-pdf_bytes = generate_pdf(combined_df)
+pdf_bytes = generate_pdf(combined_df, conflicts)
 st.download_button(
-    "📥 Download PDF",
+    "📥 Download PDF Report",
     pdf_bytes,
     "combined_rights_report.pdf",
     "application/pdf"
