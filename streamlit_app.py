@@ -11,7 +11,7 @@ from openai import OpenAI
 # -----------------------------
 # 🔐 Password Protection
 # -----------------------------
-PASSWORD = st.secrets.get("app_password", "demo123")  # set this in Streamlit Secrets
+PASSWORD = st.secrets.get("app_password", "demo123")
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -124,7 +124,7 @@ if not contracts_data:
     st.stop()
 
 # -----------------------------
-# 2️⃣ Structured Rights Extraction
+# 2️⃣ Structured Rights Extraction with JSON Fix
 # -----------------------------
 st.header("2️⃣ Structured Rights Extraction")
 
@@ -142,28 +142,33 @@ Rights Type, Territory, Exclusivity, License Start Date, License End Date, Holdb
 Contract:
 {contract['text']}
 """
+    parsed = {}
     try:
+        # Call OpenAI API
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[
+                {"role": "system", "content": "You are a JSON extractor. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ]
         )
         raw_output = response.choices[0].message.content.strip()
-
-        # Attempt to parse JSON
+        
+        # Extract JSON with regex fallback
         match = re.search(r"\{.*\}", raw_output, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
         else:
+            st.warning(f"Could not parse JSON for {contract['filename']}, using empty defaults")
             parsed = {}
-        
-        # Ensure all keys
+
+        # Ensure all keys exist
         keys = ["Rights Type","Territory","Exclusivity",
                 "License Start Date","License End Date",
                 "Holdbacks","Music Clearance","Options"]
         for key in keys:
-            if key not in parsed:
-                parsed[key] = None
-
+            parsed.setdefault(key, None)
+        
         parsed["Contract"] = contract["filename"]
         rights_list.append(parsed)
     except Exception as e:
@@ -256,11 +261,12 @@ def generate_pdf(dataframe):
     # Rows
     for _, row in dataframe.iterrows():
         max_lines = 1
+        y_start = pdf.get_y()
+        x_start = pdf.get_x()
         for i, col in enumerate(columns):
             cell_text = str(row[col])
-            # Multi-cell for long text
             pdf.multi_cell(col_width, 5, cell_text, border=1)
-            pdf.set_xy(pdf.get_x() + col_width, pdf.get_y() - 5)
+            pdf.set_xy(x_start + col_width*(i+1), y_start)
         pdf.ln(5)
     
     return pdf.output(dest="S").encode("latin1")
