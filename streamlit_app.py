@@ -83,7 +83,7 @@ Options: Renewal for 1 year"""
 {
         "filename": "Movie_B_Rights.docx",
         "type": "docx",
-        "text": """Contract Title: Movie A Distribution Agreement
+        "text": """Contract Title: Movie B Distribution Agreement
 Rights Type: Streaming
 Territory: United States
 Exclusivity: Exclusive
@@ -96,7 +96,7 @@ Options: None"""
 {
         "filename": "Movie_C_Rights.docx",
         "type": "docx",
-        "text": """Contract Title: Movie A Distribution Agreement
+        "text": """Contract Title: Movie C Distribution Agreement
 Rights Type: Streaming
 Territory: Europe
 Exclusivity: Exclusive
