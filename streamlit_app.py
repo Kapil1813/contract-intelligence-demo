@@ -230,33 +230,65 @@ st.dataframe(combined_df.style.apply(highlight, axis=1), width="stretch")
 # -----------------------------
 csv_data = combined_df.to_csv(index=False).encode("utf-8")
 st.download_button("📥 Download CSV", csv_data, "combined_rights.csv", "text/csv")
+# -----------------------------
+# Export PDF (Improved Formatting)
+# -----------------------------
+from fpdf import FPDF
+import math
 
-pdf = FPDF(orientation="L", unit="mm", format="A4")
-pdf.set_auto_page_break(auto=True, margin=10)
-pdf.add_page()
-pdf.set_font("Arial", style="B", size=12)
-pdf.cell(0, 10, "GenAI Rights Conflict Dashboard", ln=True)
-pdf.ln(5)
-pdf.set_font("Arial", size=8)
+def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard"):
+    pdf = FPDF(orientation="L", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=10)
+    pdf.add_page()
 
-cols = combined_df.columns.tolist()
-page_width = pdf.w - 20
-col_width = page_width / len(cols)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, title, ln=True)
+    pdf.ln(5)
 
-# Header
-pdf.set_font("Arial", style="B", size=8)
-for c in cols:
-    pdf.cell(col_width, 8, str(c), border=1)
-pdf.ln()
+    pdf.set_font("Arial", "B", 8)
+    cols = df.columns.tolist()
+    page_width = pdf.w - 20  # left/right margin = 10 each
+    col_width = page_width / len(cols)
 
-pdf.set_font("Arial", size=8)
-for _, row in combined_df.iterrows():
+    # Header row
     for c in cols:
-        pdf.multi_cell(col_width, 5, str(row[c]), border=1)
+        pdf.cell(col_width, 8, str(c), border=1)
     pdf.ln()
-pdf_bytes = pdf.output(dest="S").encode("latin1")
-st.download_button("📥 Download PDF", pdf_bytes, "combined_rights.pdf", "application/pdf")
 
+    pdf.set_font("Arial", "", 8)
+
+    for _, row in df.iterrows():
+        # Determine max number of lines needed in the row
+        max_lines = 1
+        for c in cols:
+            text = str(row[c])
+            # approximate number of lines
+            lines = math.ceil(pdf.get_string_width(text) / col_width)
+            max_lines = max(max_lines, lines)
+        
+        row_height = max_lines * 5  # 5mm per line
+
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
+
+        for c in cols:
+            pdf.multi_cell(col_width, 5, str(row[c]), border=1)
+            x_current = pdf.get_x()
+            y_current = pdf.get_y()
+            pdf.set_xy(x_start + (cols.index(c) + 1) * col_width, y_start)
+
+        pdf.ln(row_height)
+
+    return pdf.output(dest="S").encode("latin1")
+
+# Generate PDF and add download button
+pdf_bytes = generate_pdf(combined_df)
+st.download_button(
+    "📥 Download PDF",
+    pdf_bytes,
+    "combined_rights_report.pdf",
+    "application/pdf"
+)
 # -----------------------------
 # 4️⃣ Auto-generated User Stories
 # -----------------------------
