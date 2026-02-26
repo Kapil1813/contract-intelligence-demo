@@ -230,74 +230,62 @@ st.dataframe(combined_df.style.apply(highlight, axis=1), width="stretch")
 # -----------------------------
 csv_data = combined_df.to_csv(index=False).encode("utf-8")
 st.download_button("📥 Download CSV", csv_data, "combined_rights.csv", "text/csv")
-# -----------------------------
-# Export PDF (Fixed Header & Wrapped Cells)
-# -----------------------------
 from fpdf import FPDF
 
-def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard"):
+def generate_pdf(df: pd.DataFrame, conflicts: list = [], title: str = "GenAI Rights Conflict Dashboard"):
     pdf = FPDF(orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=10)
     pdf.add_page()
-
+    
+    # Title
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, title, ln=True)
     pdf.ln(5)
-
-    pdf.set_font("Arial", "B", 8)
+    
+    # Columns
     cols = df.columns.tolist()
     page_width = pdf.w - 20  # left/right margins
     col_width = page_width / len(cols)
     
-    # -----------------------------
-    # Draw header row
-    # -----------------------------
-    x_start = pdf.get_x()
-    y_start = pdf.get_y()
-
-    # Calculate max height for header row
-    header_heights = []
+    # Header
+    pdf.set_font("Arial", "B", 8)
     for c in cols:
-        lines = pdf.multi_cell(col_width, 5, str(c), border=0, align="C", split_only=True)
-        header_heights.append(len(lines) * 5)
-    row_height = max(header_heights)
-
-    # Draw each header cell with same height
-    pdf.set_xy(x_start, y_start)
-    for c in cols:
-        x = pdf.get_x()
-        y = pdf.get_y()
-        pdf.multi_cell(col_width, 5, str(c), border=1, align="C", max_line_height=row_height/len(lines))
-        pdf.set_xy(x + col_width, y)
-    pdf.ln(row_height)
-
+        pdf.multi_cell(col_width, 6, str(c), border=1, align="C")
+    pdf.ln()
+    
+    # Data rows
     pdf.set_font("Arial", "", 8)
-
-    # -----------------------------
-    # Draw data rows
-    # -----------------------------
     for _, row in df.iterrows():
         x_start = pdf.get_x()
         y_start = pdf.get_y()
-
-        # Calculate max height of this row
+        
+        # Determine row highlight
+        conflict_flag = any(row["Contract"] in c for c in conflicts)
+        holdback_flag = str(row["Holdbacks"]).strip().lower() not in ["none",""]
+        
+        if conflict_flag:
+            pdf.set_fill_color(242, 139, 130)  # red
+        elif holdback_flag:
+            pdf.set_fill_color(255, 244, 117)  # yellow
+        else:
+            pdf.set_fill_color(204, 255, 144)  # green
+        
+        # Calculate max height of row
         cell_heights = []
         for c in cols:
             text = str(row[c])
             lines = pdf.multi_cell(col_width, 5, text, border=0, split_only=True)
             cell_heights.append(len(lines) * 5)
         row_height = max(cell_heights)
-
-        # Draw each cell with same height
-        pdf.set_xy(x_start, y_start)
-        for c in cols:
-            x = pdf.get_x()
-            y = pdf.get_y()
+        
+        # Draw each cell with fill
+        for i, c in enumerate(cols):
+            pdf.set_xy(x_start + i*col_width, y_start)
             text = str(row[c])
-            pdf.multi_cell(col_width, 5, text, border=1)
-            pdf.set_xy(x + col_width, y)
+            pdf.multi_cell(col_width, 5, text, border=1, fill=True)
         pdf.ln(row_height)
-
+    
+    return pdf.output(dest="S").encode("latin1")
     return pdf.output(dest="S").encode("latin1")
 pdf_bytes = generate_pdf(combined_df, conflicts)
 st.download_button(
