@@ -80,6 +80,34 @@ Holdbacks: None
 Music Clearance: Cleared
 Options: Renewal for 1 year"""
     }
+{
+        "filename": "Movie_B_Rights.docx",
+        "type": "docx",
+        "text": """Contract Title: Movie A Distribution Agreement
+Rights Type: Streaming
+Territory: United States
+Exclusivity: Exclusive
+License Start Date: 2026-06-01
+License End Date: 2026-5-31
+Holdbacks: None
+Music Clearance: Cleared
+Options: None"""
+    }
+{
+        "filename": "Movie_C_Rights.docx",
+        "type": "docx",
+        "text": """Contract Title: Movie A Distribution Agreement
+Rights Type: Streaming
+Territory: Europe
+Exclusivity: Exclusive
+License Start Date: 2026-01-01
+License End Date: 2026-12-31
+Holdbacks: None
+Music Clearance: Cleared
+Options: None"""
+    }
+
+
 ]
 
 # -----------------------------
