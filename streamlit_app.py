@@ -277,6 +277,13 @@ def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard
         pdf.ln(row_height)
     
     return pdf.output(dest="S").encode("latin1")
+pdf_bytes = generate_pdf(combined_df)
+st.download_button(
+    "📥 Download PDF",
+    pdf_bytes,
+    "combined_rights_report.pdf",
+    "application/pdf"
+)
 # -----------------------------
 # 4️⃣ Auto-generated User Stories
 # -----------------------------
