@@ -79,7 +79,7 @@ License End Date: 2026-12-31
 Holdbacks: None
 Music Clearance: Cleared
 Options: Renewal for 1 year"""
-    }
+    },
 {
         "filename": "Movie_B_Rights.docx",
         "type": "docx",
@@ -92,7 +92,7 @@ License End Date: 2026-5-31
 Holdbacks: None
 Music Clearance: Cleared
 Options: None"""
-    }
+    },
 {
         "filename": "Movie_C_Rights.docx",
         "type": "docx",
