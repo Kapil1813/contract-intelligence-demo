@@ -231,57 +231,56 @@ st.dataframe(combined_df.style.apply(highlight, axis=1), width="stretch")
 csv_data = combined_df.to_csv(index=False).encode("utf-8")
 st.download_button("📥 Download CSV", csv_data, "combined_rights.csv", "text/csv")
 # -----------------------------
-# Export PDF (Improved Formatting)
+# Export PDF (Fully Wrapped & Aligned)
 # -----------------------------
 from fpdf import FPDF
-import math
 
 def generate_pdf(df: pd.DataFrame, title: str = "GenAI Rights Conflict Dashboard"):
     pdf = FPDF(orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=10)
     pdf.add_page()
-
+    
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, title, ln=True)
     pdf.ln(5)
-
+    
     pdf.set_font("Arial", "B", 8)
     cols = df.columns.tolist()
-    page_width = pdf.w - 20  # left/right margin = 10 each
+    page_width = pdf.w - 20  # left/right margins
     col_width = page_width / len(cols)
-
-    # Header row
+    
+    # Header
     for c in cols:
-        pdf.cell(col_width, 8, str(c), border=1)
+        pdf.multi_cell(col_width, 6, str(c), border=1, align="C", ln=3)
     pdf.ln()
-
+    
     pdf.set_font("Arial", "", 8)
-
+    
+    # Data rows
     for _, row in df.iterrows():
-        # Determine max number of lines needed in the row
-        max_lines = 1
-        for c in cols:
-            text = str(row[c])
-            # approximate number of lines
-            lines = math.ceil(pdf.get_string_width(text) / col_width)
-            max_lines = max(max_lines, lines)
-        
-        row_height = max_lines * 5  # 5mm per line
-
         x_start = pdf.get_x()
         y_start = pdf.get_y()
-
+        
+        # Calculate max height of row based on wrapped cells
+        cell_heights = []
         for c in cols:
-            pdf.multi_cell(col_width, 5, str(row[c]), border=1)
-            x_current = pdf.get_x()
-            y_current = pdf.get_y()
-            pdf.set_xy(x_start + (cols.index(c) + 1) * col_width, y_start)
-
+            text = str(row[c])
+            # number of lines = ceil(text width / col width)
+            lines = pdf.multi_cell(col_width, 5, text, border=0, split_only=True)
+            cell_heights.append(len(lines) * 5)
+        row_height = max(cell_heights)
+        
+        # Draw each cell with same height
+        for c in cols:
+            text = str(row[c])
+            pdf.multi_cell(col_width, 5, text, border=1)
+            x_new = pdf.get_x()
+            y_new = pdf.get_y()
+            pdf.set_xy(x_start + cols.index(c)*col_width, y_start)
         pdf.ln(row_height)
-
+    
     return pdf.output(dest="S").encode("latin1")
 
-# Generate PDF and add download button
 pdf_bytes = generate_pdf(combined_df)
 st.download_button(
     "📥 Download PDF",
